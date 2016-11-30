@@ -23,9 +23,8 @@ UIUserNotificationSettings *settings = [UIUserNotificationSettings settingsForTy
 [application registerForRemoteNotifications];
 ```
 ```swift
-let userNotificationTypes: UIUserNotificationType = [.Alert, .Badge, .Sound]
-
-let settings = UIUserNotificationSettings(forTypes: userNotificationTypes, categories: nil)
+let types: UIUserNotificationType = [.alert, .badge, .sound]
+let settings = UIUserNotificationSettings(types: types, categories: nil)
 application.registerUserNotificationSettings(settings)
 application.registerForRemoteNotifications()
 ```
@@ -41,11 +40,16 @@ We will then update our `%{ParseInstallation}` with the `deviceToken` once the d
 }
 ```
 ```swift
-func application(application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: NSData) {
-  // Store the deviceToken in the current Installation and save it to Parse
-  let installation = PFInstallation.currentInstallation()
-  installation.setDeviceTokenFromData(deviceToken)
-  installation.saveInBackground()
+func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data){
+    let installation = PFInstallation.current()
+    installation?.setDeviceTokenFrom(deviceToken)
+    installation?.saveInBackground()
+}
+func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    print("Push Notification Setup Failure: " + error.localizedDescription)
+}
+func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any]) {
+    PFPush.handle(userInfo)
 }
 ```
 
@@ -98,9 +102,9 @@ PFInstallation *currentInstallation = [PFInstallation currentInstallation];
 ```
 ```swift
 // When users indicate they are Giants fans, we subscribe them to that channel.
-let currentInstallation = PFInstallation.currentInstallation()
-currentInstallation.addUniqueObject("Giants", forKey: "channels")
-currentInstallation.saveInBackground()
+let currentInstallation = PFInstallation.current()
+currentInstallation?.addUniqueObject("Giants", forKey: "channels")
+currentInstallation?.saveInBackground()
 ```
 
 Once subscribed to the "Giants" channel, your `Installation` object should have an updated `channels` field.
@@ -117,9 +121,9 @@ PFInstallation *currentInstallation = [PFInstallation currentInstallation];
 ```
 ```swift
 // When users indicate they are Giants fans, we subscribe them to that channel.
-let currentInstallation = PFInstallation.currentInstallation()
-currentInstallation.removeObject("Giants", forKey: "channels")
-currentInstallation.saveInBackground()
+let currentInstallation = PFInstallation.current()
+currentInstallation?.removeObject("Giants", forKey: "channels")
+currentInstallation?.saveInBackground()
 ```
 
 The set of subscribed channels is cached in the `currentInstallation` object:
@@ -128,7 +132,7 @@ The set of subscribed channels is cached in the `currentInstallation` object:
 NSArray *subscribedChannels = [PFInstallation currentInstallation].channels;
 ```
 ```swift
-let subscribedChannels = PFInstallation.currentInstallation().channels
+let subscribedChannels = PFInstallation.current()?.channels
 ```
 
 If you plan on changing your channels from Cloud Code or the data browser, note that you'll need to call some form of `fetch` prior to this line in order to get the most recent channels.
@@ -193,10 +197,10 @@ PFInstallation *installation = [PFInstallation currentInstallation];
 ```
 ```swift
 // Store app language and version
-let installation = PFInstallation.currentInstallation()
-installation["scores"] = true
-installation["gameResults"] = true
-installation["injuryReports"] = true
+let installation = PFInstallation.current()
+installation?["scores"] = true
+installation?["gameResults"] = true
+installation?["injuryReports"] = true
 installation.saveInBackground()
 ```
 
@@ -210,9 +214,9 @@ installation[@"user"] = [PFUser currentUser];
 ```
 ```swift
 // Associate the device with a user
-let installation = PFInstallation.currentInstallation()
-installation["user"] = PFUser.currentUser()
-installation.saveInBackground()
+let installation = PFInstallation.current()
+installation?["user"] = PFUser.currentUser()
+installation?.saveInBackground()
 ```
 
 #### Sending Pushes to Queries
@@ -572,15 +576,15 @@ When an app is opened from a notification, the data is made available in the `ap
 func application(application: UIApplication, didFinishLaunchingWithOptions launchOptions: [NSObject: AnyObject]?) -> Bool {
   . . .
   // Extract the notification data
-  if let notificationPayload = launchOptions?[UIApplicationLaunchOptionsRemoteNotificationKey] as? NSDictionary {
+  if let notificationPayload = launchOptions?[UIApplicationLaunchOptionsKey.remoteNotification] as? NSDictionary {
 
       // Create a pointer to the Photo object
-      let photoId = notificationPayload["p"] as? NSString
+      let photoId = notificationPayload["p"] as? String
       let targetPhoto = PFObject(withoutDataWithClassName: "Photo", objectId: photoId)
 
       // Fetch photo object
-      targetPhoto.fetchIfNeededInBackgroundWithBlock {
-        (object: PFObject?, error:NSError?) -> Void in
+      targetPhoto.fetchIfNeededInBackground {
+          (object: PFObject?, error: Error?) -> Void in
           if error == nil {
               // Show photo view controller
               let viewController = PhotoVC(photo: object);
@@ -616,23 +620,23 @@ If your app is already running when the notification is received, the data is ma
 }
 ```
 ```swift
-func application(application: UIApplication,  didReceiveRemoteNotification userInfo: [NSObject : AnyObject],  fetchCompletionHandler completionHandler: (UIBackgroundFetchResult) -> Void) {
+func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void)
   if let photoId: String = userInfo["p"] as? String {
     let targetPhoto = PFObject(withoutDataWithClassName: "Photo", objectId: photoId)
-    targetPhoto.fetchIfNeededInBackgroundWithBlock { (object: PFObject?, error: NSError?) -> Void in
-      // Show photo view controller
-      if error != nil {
-        completionHandler(UIBackgroundFetchResult.Failed)
-      } else if PFUser.currentUser() != nil {
-        let viewController = PhotoVC(withPhoto: object)
-        self.navController.pushViewController(viewController, animated: true)
-        completionHandler(UIBackgroundFetchResult.NewData)
-      } else {
-        completionHandler(UIBackgroundFetchResult.NoData)
-      }
+    targetPhoto.fetchIfNeededInBackground { (object: PFObject?, error: Error?) -> Void in
+        // Show photo view controller
+        if error != nil {
+            completionHandler(UIBackgroundFetchResult.failed)
+        } else if PFUser.current() != nil {
+            let viewController = PhotoVC(withPhoto: object)
+            self.navController.pushViewController(viewController, animated: true)
+            completionHandler(UIBackgroundFetchResult.newData)
+        } else {
+            completionHandler(UIBackgroundFetchResult.noData)
+        }
     }
   }
-  handler(UIBackgroundFetchResult.NoData)
+  completionHandler(UIBackgroundFetchResult.noData)
 }
 ```
 
@@ -661,15 +665,15 @@ if (application.applicationState != UIApplicationStateBackground) {
 }
 ```
 ```swift
-if application.applicationState != UIApplicationState.Background {
+if application.applicationState != UIApplicationState.background {
   // Track an app open here if we launch with a push, unless
   // "content_available" was used to trigger a background push (introduced
   // in iOS 7). In that case, we skip tracking here to avoid double
   // counting the app-open.
-  let oldPushHandlerOnly = !self.respondsToSelector(Selector("application:didReceiveRemoteNotification:fetchCompletionHandler:"))
+  let oldPushHandlerOnly = self.responds(to: #selector(UIApplicationDelegate.application(_:didReceiveRemoteNotification:fetchCompletionHandler:)))
   let noPushPayload: AnyObject? = launchOptions?[UIApplicationLaunchOptionsRemoteNotificationKey]?
   if oldPushHandlerOnly || noPushPayload != nil {
-    PFAnalytics.trackAppOpenedWithLaunchOptions(launchOptions)
+    PFAnalytics.trackAppOpened(launchOptions: launchOptions)
   }
 }
 ```
@@ -687,10 +691,10 @@ Second, if your application is running or backgrounded, the `application:didRece
 ```
 ```swift
 func application(application: UIApplication, didReceiveRemoteNotification userInfo: [NSObject : AnyObject]) {
-    if application.applicationState == .Inactive  {
+    if application.applicationState == .inactive  {
         // The application was just brought from the background to the foreground,
         // so we consider the app as having been "opened by a push notification."
-        PFAnalytics.trackAppOpenedWithRemoteNotificationPayload(userInfo)
+        PFAnalytics.trackAppOpened(withRemoteNotificationPayload: userInfo)
     }
 }
 ```
@@ -706,8 +710,8 @@ Finally, if using iOS 7 any of its new push features (including the new "content
 ```
 ```swift
 func application(application: UIApplication,  didReceiveRemoteNotification userInfo: [NSObject : AnyObject],  fetchCompletionHandler completionHandler: (UIBackgroundFetchResult) -> Void) {
-  if application.applicationState == .Inactive {
-    PFAnalytics.trackAppOpenedWithRemoteNotificationPayload(userInfo)
+  if application.applicationState == .inactive {
+    PFAnalytics.trackAppOpened(withRemoteNotificationPayload: userInfo)
   }
 }
 ```
@@ -749,10 +753,10 @@ A good time to clear your app's badge is usually when your app is opened. Settin
 ```
 ```swift
 func applicationDidBecomeActive(application: UIApplication) {
-  let currentInstallation = PFInstallation.currentInstallation()
-  if currentInstallation.badge != 0 {
-    currentInstallation.badge = 0
-    currentInstallation.saveEventually()
+  let currentInstallation = PFInstallation.current()
+  if currentInstallation?.badge != 0 {
+    currentInstallation?.badge = 0
+    currentInstallation?.saveEventually()
   }
   // ...
 }
